@@ -4,7 +4,7 @@
 \alias{extract_faces}
 \title{Title}
 \usage{
-extract_faces()
+extract_faces(version, season)
 }
 \description{
 Title

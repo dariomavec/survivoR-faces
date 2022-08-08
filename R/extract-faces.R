@@ -3,16 +3,16 @@
 #' @return
 #' @export
 #' @import curl rvest purrr survivoR tidyverse
-extract_faces <- function(){
-  url <- 'http://gradientdescending.com/survivor/castaways0/'
+extract_faces <- function(version, season){
+  url <- 'http://gradientdescending.com/survivor/castaways/colour/'
   
   imgs <- survivoR::castaways |> 
-    filter(version == 'US',
-           season >= 40) |> 
+    filter(version == !!version,
+           season == !!season) |> 
     transmute(
       season, castaway_id, castaway,
       url_suffix = paste0(
-        's', season, str_sub(castaway_id, 3, 6), '.png'
+        version_season, castaway_id, '.png'
       ),
       folder = paste0('us', season),
       file = paste0(castaway_id, '-', str_to_lower(castaway), '.png'),
