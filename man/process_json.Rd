@@ -2,10 +2,10 @@
 % Please edit documentation in R/summarise-data.R
 \name{process_json}
 \alias{process_json}
-\title{Title}
+\title{Process season}
 \usage{
 process_json(season)
 }
 \description{
-Title
+Process season
 }
