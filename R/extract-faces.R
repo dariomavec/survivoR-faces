@@ -14,7 +14,7 @@ extract_faces <- function(version, season){
       url_suffix = paste0(
         version_season, castaway_id, '.png'
       ),
-      folder = paste0('us', season),
+      folder = paste0('img/us', season, '/cast/'),
       file = paste0(castaway_id, '-', str_to_lower(castaway), '.png'),
       dl = pmap(list(folder, file, url_suffix), ~{
         dir.create(..1, showWarnings = FALSE)
@@ -25,4 +25,14 @@ extract_faces <- function(version, season){
       })
     )
 }
-
+# 
+# version = 'US'
+# seasons = 1:20
+# 
+# walk(seasons, ~{extract_faces(version, .x)})
+# walk(seasons, ~{
+#   dir.create(paste0('img/us', .x, '/cast/'))
+#   files <- list.files(paste0('img/us', .x), pattern = '*.png')
+#   file.rename(paste0('img/us', .x, '/', files), paste0('img/us', .x, '/cast/', files))
+#   
+# })
