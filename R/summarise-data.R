@@ -5,7 +5,7 @@
 #'
 #' @import tidyr dplyr stringr readr glue
 #' @importFrom jsonlite read_json
-process_json <- function(season, save_to_fact = FALSE) {
+process_json <- function(season, save_to_fact = FALSE, block_size = 5) {
   load('data/screen_time.rda')
 
   current <- screen_time |>
@@ -36,9 +36,18 @@ process_json <- function(season, save_to_fact = FALSE) {
   screen_time <- all_time |> 
     left_join(eps, by = c('version_season', 'episode', 'episode_ts', 'screen_time')) |> 
     unnest(castaway_id, keep_empty = TRUE) |> 
+    mutate(blocks = block_size * floor(episode_ts / block_size)) |> 
+    count(version_season, castaway_id, episode, blocks, 
+          wt = screen_time, name = 'screen_blocks') |> 
+    filter(!is.na(castaway_id), !is.na(screen_blocks)) |> 
+    mutate(likely_screen_time = case_when(
+      # If more than 50% of a block includes screen time for the castaway then
+      # we assume they're part of the whole clip
+      screen_blocks / block_size >= 0.5 ~ pmax(screen_blocks, block_size),
+      TRUE ~ pmin(screen_blocks, block_size)
+    )) |> 
     group_by(version_season, castaway_id, episode) |>
-    summarise(screen_time = sum(screen_time), .groups = 'drop') |> 
-    
+    summarise(screen_time = sum(likely_screen_time), .groups = 'drop')
     bind_rows(current) |>
     arrange(version_season, episode, screen_time) |> 
     select(
@@ -54,7 +63,7 @@ process_json <- function(season, save_to_fact = FALSE) {
   if(save_to_fact) {
     season_screen_time <- screen_time |> 
       filter(version_season == str_to_upper(season))
-    interval <- season_screen_time$screen_time[1]
+    interval <- eps$screen_time[1]
     
     season_screen_time |> 
       write_rds(glue('db/fact/{season}_{interval}_screen_time.rds'))
@@ -74,21 +83,21 @@ process_json <- function(season, save_to_fact = FALSE) {
 plot_screen_time <- function(season, interval) {
   read_rds(glue('db/fact/{season}_{interval}_screen_time.rds')) |> 
     filter(!is.na(castaway_id)) |> 
-    rename(vid_episode = episode) |> 
-    left_join(survivoR::castaways, by = c("version_season", "castaway_id")) |> 
-    replace_na(list(full_name = 'Host')) |> 
-    group_by(castaway_id) |> 
-    mutate(total_screen_time = cumsum(screen_time)) |> 
-    ggplot(aes(season_ts, 
-               total_screen_time, 
-               colour = full_name,
-               group = castaway_id)) +
-    geom_line() +
+    left_join(survivoR::confessionals, by = c("version_season", "castaway_id", "episode")) |> 
+    group_by(castaway) |>
+    summarise(screen_time = sum(screen_time),
+           confessional_count = sum(confessional_count)) |>
+    filter(!is.na(castaway)) |> 
+    ggplot(aes(confessional_count, 
+               screen_time / 60)) +
+    geom_point(aes(colour = castaway)) +
+    geom_label_repel(aes(colour = castaway, label = castaway)) +
+    # geom_smooth() +
     scale_y_comma() +
     scale_x_comma() +
     labs(
-      x = 'Season timestamp (seconds)',
-      y = 'Total screen time (seconds)',
+      x = 'Confessionals count',
+      y = 'Total screen time (minutes)',
       colour = "Contestant",
       title = glue('Survivor Screen Time (Season {str_to_upper(season)})'),
       subtitle = glue('Sampling every {interval} seconds')
@@ -107,11 +116,12 @@ plot_screen_time_agg <- function(season, interval) {
     filter(!is.na(castaway_id)) |> 
     rename(vid_episode = episode) |> 
     left_join(survivoR::castaways, by = c("version_season", "castaway_id")) |> 
-    mutate(full_name = coalesce(full_name, castaway_id)) |> 
-    group_by(castaway_id, full_name) |> 
+    mutate(full_name = paste0('Ep. ', episode, ' - ', coalesce(full_name, castaway_id)) |> 
+             str_wrap(width = 10)) |> 
+    group_by(castaway_id, full_name, episode) |> 
     summarise(total_screen_time = sum(screen_time)) |> 
     ungroup() |> 
-    mutate(full_name = forcats::fct_reorder(full_name, total_screen_time)) |> 
+    mutate(full_name = forcats::fct_reorder(full_name, episode)) |> 
     ggplot(aes(full_name, 
                total_screen_time,
                fill = castaway_id)) +
@@ -123,7 +133,7 @@ plot_screen_time_agg <- function(season, interval) {
       title = glue('Survivor Screen Time (Season {str_to_upper(season)})'),
       subtitle = glue('Sampling every {interval} seconds')
     ) +
-    coord_flip() +
+    # coord_flip() +
     theme_ipsum_rc()
 }
 
